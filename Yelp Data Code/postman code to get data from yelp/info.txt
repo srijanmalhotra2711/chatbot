@@ -1,0 +1,4 @@
+GET https://api.yelp.com/v3/businesses/search?term=mexican restaurants&location=manhattan&limit=50&offset={{offset}}
+
+KEY - Authorization
+VALUE - Bearer uwQrOdxy8XJ9b6PyDJ1M5gZUfw-3q2QiCG_7gnzUnWIxkoTE5WSlDVX500wImrXtEIPFZjRSmufEpfaLon1Mj4b0sPpAVC-Ou2qDMuRztmZNINH7_pMfoTlBu7IeYnYx
