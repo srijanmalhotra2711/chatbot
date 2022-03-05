@@ -3,10 +3,12 @@ import datetime
 import dateutil.parser
 import json
 import math
+import re
+from datetime import timedelta
 
 def lambda_handler(event, context):
     return search_intent(event)
-
+    
 def search_intent(event_info):
     intent_name = event_info['currentIntent']['name']
     if intent_name == 'GreetingIntent':
@@ -18,7 +20,6 @@ def search_intent(event_info):
 
     raise Exception('Intent with name ' + intent_name + ' not supported')
 
-
 def greeting_intent(event_info):
     return {
         'dialogAction': {
@@ -29,17 +30,15 @@ def greeting_intent(event_info):
         }
     }
 
-  
 def thank_you_intent(event_info):
     return {
         'dialogAction': {
             "type": "ElicitIntent",
             'message': {
                 'contentType': 'PlainText',
-                'content': 'You’re welcome!'}
+                'content': 'You are welcome!'}
         }
     }
-
 
 def dining_suggestions_intent(event_info):
     location = get_slots(event_info)["Location"]
@@ -49,7 +48,7 @@ def dining_suggestions_intent(event_info):
     time = get_slots(event_info)["DiningTime"]
     PhoneNumber = get_slots(event_info)["PhoneNumber"]
     EmailAddress = get_slots(event_info)["EmailAddress"]
-    
+
     source = event_info['invocationSource']
 
     if source == 'DialogCodeHook':
@@ -60,13 +59,12 @@ def dining_suggestions_intent(event_info):
         if not validation_result['isValid']:
             slots[validation_result['violatedSlot']] = None
             return elicit_slot(event_info['sessionAttributes'],
-                               event_info['currentIntent']['name'],
-                               slots,
-                               validation_result['violatedSlot'],
-                               validation_result['message'])
+                    event_info['currentIntent']['name'],
+                    slots,
+                    validation_result['violatedSlot'],
+                    validation_result['message'])
 
-        if event_info[
-            'sessionAttributes'] is not None:
+        if event_info['sessionAttributes'] is not None:
             output_session_attributes = event_info['sessionAttributes']
         else:
             output_session_attributes = {}
@@ -104,7 +102,7 @@ def dining_suggestions_intent(event_info):
         'EmailAddress': {
             'DataType': 'String',
             'StringValue': slots['EmailAddress']
-        }
+        },
     }
     sqs.send_message(QueueUrl=sqs_url, MessageBody="message from LF1", MessageAttributes=attributes)
 
@@ -113,10 +111,8 @@ def dining_suggestions_intent(event_info):
                  {'contentType': 'PlainText',
                   'content': 'You’re all set. Expect my suggestions shortly! Have a good day.'})
 
-
 def get_slots(event_info):
     return event_info['currentIntent']['slots']
-
 
 def close(session_attributes, fulfillment_state, message):
     response = {
@@ -127,9 +123,7 @@ def close(session_attributes, fulfillment_state, message):
             'message': message
         }
     }
-
     return response
-
 
 def validation_res(is_valid, violated_slot, message_content):
     if message_content is None:
@@ -144,7 +138,6 @@ def validation_res(is_valid, violated_slot, message_content):
         'message': {'contentType': 'PlainText', 'content': message_content}
     }
 
-
 def elicit_slot(session_attributes, intent_name, slots, slot_to_elicit, message):
     return {
         'sessionAttributes': session_attributes,
@@ -157,13 +150,11 @@ def elicit_slot(session_attributes, intent_name, slots, slot_to_elicit, message)
         }
     }
 
-
 def parse_int(n):
     try:
         return int(n)
     except ValueError:
         return float('nan')
-
 
 def delegate_return(session_attributes, slots):
     return {
@@ -174,23 +165,21 @@ def delegate_return(session_attributes, slots):
         }
     }
 
-
-def validate_slots(location, cuisine, count_people, date, time, phonenumber, emailaddr):
-    cuisines = ['indian', 'mexican', 'italian','korean', 'japanese', 'chinese']
-    if cuisine is None and cuisine.lower() not in cuisines:
-        print("cuisine block entered")
-        return validation_res(False,'Cuisine','Cuisine not found. Please try another.')
+def validate_slots(location, cuisine, count_people, date, time, phonenumber, emailaddress):
+    cuisines = ['italian', 'chinese', 'mexican','korean','indian', 'japanese']
+    if cuisine is not None and cuisine.lower() not in cuisines:
+        return validation_res(False,'Cuisine','Cuisine not found! Please try another!')
 
     if count_people is not None:
         count_people = int(count_people)
-        if count_people > 20 or count_people < 0:
-            print("number block entered")
-            return validation_res(False,'CountPeople','Maximum 20 people allowed. Please try again')
+        if count_people > 20 or count_people <= 0:
+            return validation_res(False,'CountPeople','Invalid number! Maximum 20 people allowed. Please try again!')
 
     if date is not None:
-        if datetime.datetime.strptime(date, '%Y-%m-%d').date() < datetime.date.today():
-            print("date block entered")
-            return validation_res(False, 'DiningDate', 'Sorry wrong date inserted, Please enter date again (Future dates only)')
+        date_utc = datetime.datetime.now()
+        date_est = date_utc - timedelta(hours=5)
+        if datetime.datetime.strptime(date, '%Y-%m-%d').date() < date_est.date():
+            return validation_res(False, 'DiningDate', 'Sorry wrong date inserted, Please enter date again! (Future dates only!)')
 
     if time is not None:
         if len(time) != 5:
@@ -199,15 +188,23 @@ def validate_slots(location, cuisine, count_people, date, time, phonenumber, ema
         hour, minute = time.split(':')
         hour = parse_int(hour)
         minute = parse_int(minute)
+        
+        if hour == 21:
+            if minute!=0:
+                return validation_res(False, 'DiningTime','We accept time from 7 AM to 9 PM. Please specify a time during this range!')
 
-        if hour < 7 or hour > 21:
-            return validation_res(False, 'DiningTime','We accept time from 7 am to 9 pm. Please specify a time during this range?')
-    
+        elif hour < 7 or hour > 21:
+            return validation_res(False, 'DiningTime','We accept time from 7 AM to 9 PM. Please specify a time during this range!')
+
     if phonenumber is not None:
         if len(phonenumber) != 10:
-            return validation_res(False, 'PhoneNumber','Please specify valid mobile number with 10 digits')
-            
-    # if emailaddr is not None:
-    #     if 
+            return validation_res(False, 'PhoneNumber','Please specify a valid 10 digit mobile number!')
+    
+    regex = re.compile(r'([A-Za-z0-9]+[.-_])*[A-Za-z0-9]+@[A-Za-z0-9-]+(\.[A-Z|a-z]{2,})+')
+    
+    if emailaddress is not None:
+        if not (regex.match(emailaddress)):
+            print("Invalid Email")
+            return validation_res(False, 'EmailAddress','Please specify a valid email address!')
 
     return validation_res(True, None, None)
